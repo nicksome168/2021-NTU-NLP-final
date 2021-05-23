@@ -9,23 +9,24 @@ from torch.optim import AdamW
 from transformers import AutoTokenizer
 from tqdm import tqdm
 
-from utils import handle_reproducibility, loss_fn
+from utils import handle_reproducibility, loss_fn, clean_data
 from dataset import QADataset
-from model import QAModel
+from model import MultipleChoiceModel
 
 
 def train(args: argparse.Namespace) -> None:
-    with open(args.data_dir / "train.json") as file:
+    with open(args.data_dir / args.train_data) as file:
         all_data = json.load(file)
+    all_data = clean_data(all_data)
     
     # Split data
-    valid_data = all_data[:round(len(all_data) * args.split)]
-    train_data = all_data[round(len(all_data) * args.split):]
+    valid_data = all_data[:round(len(all_data) * args.train_val_split)]
+    train_data = all_data[round(len(all_data) * args.train_val_split):]
     print(f"train data: {len(train_data)} valid data: {len(valid_data)}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-    train_set = QADataset(train_data, tokenizer)
-    valid_set = QADataset(valid_data, tokenizer)
+    train_set = QADataset(train_data, tokenizer, args.max_seq_length)
+    valid_set = QADataset(valid_data, tokenizer, args.max_seq_length)
 
     train_loader = DataLoader(
         train_set,
@@ -34,18 +35,19 @@ def train(args: argparse.Namespace) -> None:
         num_workers=4,
         collate_fn=train_set.collate_fn,
         pin_memory=True,
+        drop_last=True,
     )
 
     valid_loader = DataLoader(
         valid_set,
-        batch_size=args.batch_size,
+        batch_size=1,
         shuffle=True,
         num_workers=4,
         collate_fn=valid_set.collate_fn,
         pin_memory=True,
     )
 
-    model = QAModel(args.model)
+    model = MultipleChoiceModel(args.model)
     model.to(args.device)
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -133,37 +135,42 @@ def train(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    
+    #data
+    parser.add_argument("--train_data", type=str, default="train.json")
     parser.add_argument(
         "--data_dir",
         type=Path,
         help="Directory to the dataset.",
         default="data/",
     )
+
+    # model
+    parser.add_argument("--model", type=str, default="bert-base-chinese") #allenai/longformer-base-4096
     parser.add_argument(
         "--ckpt_dir",
         type=Path,
         help="Directory to save model files.",
         default="model/",
     )
-
-    # model
-    parser.add_argument("--model", type=str, default="allenai/longformer-base-4096")
-
+    
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--wd", type=float, default=1e-2)
 
     # data loader
     parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--train_val_split", type=int, default=0.1)
+    parser.add_argument("--max_seq_length", type=int, default=512)
 
     # training
     parser.add_argument("--device", type=torch.device, default="cuda:0")
     parser.add_argument("--num_epoch", type=int, default=10)
     parser.add_argument("--n_batch_per_step", type=int, default=2)
-    parser.add_argument("--metric_for_best", type=str, default="valid_em")
+    parser.add_argument("--metric_for_best", type=str, default="valid_loss")
 
     # logging
-    parser.add_argument("--wandb_logging", type=bool, default=True)
+    parser.add_argument("--wandb_logging", type=bool, default=False)
     parser.add_argument("--exp_name", type=str, default="roberta_lr5_bs8_s2")
 
     args = parser.parse_args()
