@@ -127,3 +127,9 @@ dmypy.json
 
 # model
 model/
+
+# Pipefile
+Pipfile.lock
+
+# data
+prediction/

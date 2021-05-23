@@ -15,4 +15,7 @@ python3 train_qa.py
 - Model will be saved in `model/`.
 
 ## Prediction
-- TODO
+```
+python3 predict.py --base_model <the_base_model> --checkpoint <the_checkpoint_model>
+```
+- Prediction will be saved in `prediction/`.
