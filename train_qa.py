@@ -24,9 +24,9 @@ def train(args: argparse.Namespace) -> None:
     train_data = all_data[round(len(all_data) * args.train_val_split):]
     print(f"train data: {len(train_data)} valid data: {len(valid_data)}")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
-    train_set = QADataset(train_data, tokenizer, args.max_seq_length)
-    valid_set = QADataset(valid_data, tokenizer, args.max_seq_length)
+    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
+    train_set = QADataset(train_data, tokenizer, args.max_seq_length, mode="train")
+    valid_set = QADataset(valid_data, tokenizer, args.max_seq_length, mode="valid")
 
     train_loader = DataLoader(
         train_set,
@@ -47,7 +47,7 @@ def train(args: argparse.Namespace) -> None:
         pin_memory=True,
     )
 
-    model = MultipleChoiceModel(args.model)
+    model = MultipleChoiceModel(args.base_model)
     model.to(args.device)
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -57,7 +57,6 @@ def train(args: argparse.Namespace) -> None:
 
         wandb.init(project="2021-NLP-final", entity="nicksome_yc", name=args.exp_name, config=args)
         wandb.watch(model)
-    # print(model)
 
     best_metric = 0
     for epoch in range(1, args.num_epoch + 1):
@@ -107,6 +106,7 @@ def train(args: argparse.Namespace) -> None:
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
                 valid_loss += loss.item()
+                logits = outputs.logits
                 valid_corrects += loss_fn(logits, labels)
 
             valid_log = {
@@ -127,11 +127,11 @@ def train(args: argparse.Namespace) -> None:
             best = False
 
         if best:
-            torch.save(model.state_dict(), args.ckpt_dir / f"best_model_{args.exp_name}.pt")
+            torch.save(model.state_dict(), args.model_dir / f"best_model_{args.exp_name}.pt")
             print(f"{'':30s}*** Best model saved ***")
 
     if args.wandb_logging:
-        wandb.save(str(args.ckpt_dir / f"best_model_{args.exp_name}.pt"))
+        wandb.save(str(args.model_dir / f"best_model_{args.exp_name}.pt"))
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -146,9 +146,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     # model
-    parser.add_argument("--model", type=str, default="bert-base-chinese") #allenai/longformer-base-4096
+    parser.add_argument("--base-model", type=str, default="bert-base-chinese") #allenai/longformer-base-4096
     parser.add_argument(
-        "--ckpt_dir",
+        "--model_dir",
         type=Path,
         help="Directory to save model files.",
         default="model/",
@@ -171,7 +171,7 @@ def parse_args() -> argparse.Namespace:
 
     # logging
     parser.add_argument("--wandb_logging", type=bool, default=False)
-    parser.add_argument("--exp_name", type=str, default="roberta_lr5_bs8_s2")
+    parser.add_argument("--exp_name", type=str, default="bert-base-chinese-512")
 
     args = parser.parse_args()
     return args
@@ -182,6 +182,6 @@ if __name__ == "__main__":
     handle_reproducibility(True)
 
     args = parse_args()
-    args.ckpt_dir.mkdir(parents=True, exist_ok=True)
+    args.model_dir.mkdir(parents=True, exist_ok=True)
 
     train(args)
