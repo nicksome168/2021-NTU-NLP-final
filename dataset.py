@@ -33,19 +33,25 @@ class QADataset(Dataset):
         return torch.stack(input_ids_batch), \
                 torch.stack(attention_mask_batch), \
                 torch.stack(label_batch)
-        
+    
+    def trim_to_max_length(self, max_seq_length: int, passage):
+        if len(passage) > max_seq_length - 3:
+            passage = passage[-(max_seq_length - 3):]
+        return passage
+
     def preprocess(self, tokenizer, max_seq_length: int, x) -> Dict:
         choices_features = []
         label_map = {"A": 0, "B": 1, "C": 2}
         question = x["question"]["stem"]
-        article = x["text"]
+        passage = x["text"]
+        passage = self.trim_to_max_length(max_seq_length, passage)
 
         option: str
         for option in x["question"]["choices"]:    
             question_option = question + " " + option['text']
 
             inputs = tokenizer(
-                article,
+                passage,
                 question_option,
                 add_special_tokens=True,
                 max_length=max_seq_length,
