@@ -160,7 +160,7 @@ def qa_test(exp_path: str):
     print("evaluate on training set...")
 
     # Data
-    data = all_dataset(args["qa_data"], args["risk_data"])
+    data = all_dataset(args["qa_data"], args["risk_data"], mode='valid')
 
     for ckpt in ckpts:
         # Model

@@ -34,7 +34,7 @@ def split_sent(sentence: str):
 
     return out
 
-def preprocess(qa_file: str, risk_file: str):
+def preprocess(qa_file: str, risk_file: str, mode: str):
     with open(qa_file, "r", encoding = "utf-8") as f_QA,\
             open(risk_file, "r", encoding = "utf-8") as f_Risk:
         article = []
@@ -78,6 +78,14 @@ def preprocess(qa_file: str, risk_file: str):
                 article_id = data["article_id"]
 
             qa[-1].append([question_text, temp])
+    if mode == 'valid':
+        article = article[:round(len(article) * 0.1)]
+        risk = risk[:round(len(risk) * 0.1)]
+        qa = qa[:round(len(qa) * 0.1)]
+    elif mode == 'train':
+        article = article[round(len(article) * 0.1):]
+        risk = risk[round(len(risk) * 0.1):]
+        qa = qa[round(len(qa) * 0.1):]
 
     return article, risk, qa
 
@@ -105,13 +113,14 @@ class all_dataset(Dataset):
         max_sent_len: int = 52,
         max_doc_len: int = 170,
         max_q_len: int = 20,
-        max_c_len: int = 18
+        max_c_len: int = 18,
+        mode: str = 'train'
     ):
         super().__init__()
         with open('data/vocab.json', 'r', encoding='utf-8') as f_w2id:
             w2id = json.load(f_w2id)
         # w2id = {"[PAD]": 0}
-        article, risk, qa = preprocess(qa_file, risk_file)
+        article, risk, qa = preprocess(qa_file, risk_file, mode)
 
         # `risk` shape: [N]
         self.risk = np.array(risk)
