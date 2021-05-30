@@ -99,6 +99,7 @@ def train(args: argparse.Namespace) -> None:
             else:
                 # input shape = (batch_size, num_options, seq_len)
                 # label shape = (batch_size,)
+                # print(tokenizer.decode(input_ids[0,0,:]))
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
                 loss = outputs.loss
                 logits = outputs.logits
@@ -197,7 +198,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wd", type=float, default=1e-2)
 
     # data loader
-    parser.add_argument("--ensemble", type=bool, default=False)
+    parser.add_argument("--ensemble", action="store_true")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_val_split", type=int, default=0.1)
     parser.add_argument("--max_seq_length", type=int, default=512)
@@ -209,7 +210,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metric_for_best", type=str, default="valid_loss")
 
     # logging
-    parser.add_argument("--wandb_logging", type=bool, default=False)
+    parser.add_argument("--wandb_logging", action="store_true")
     parser.add_argument("--exp_name", type=str, default="bert-base-chinese-512")
 
     args = parser.parse_args()
