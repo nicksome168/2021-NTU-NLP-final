@@ -8,6 +8,7 @@ torch = "==1.7.1"
 spacy = "==3.0.5"
 transformers = "==4.5.0"
 tqdm = "*"
+wandb = "*"
 
 [dev-packages]
 wandb = "*"
