@@ -99,18 +99,18 @@ class QADataset(Dataset):
             option: str
             for option in x["question"]["choices"]:    
                 question_option = question + " " + option['text']
-            inputs = tokenizer(
-                passage,
-                question_option,
-                add_special_tokens=True,
-                max_length=max_seq_length,
-                truncation=True,
-                padding='max_length',
-                return_tensors='pt'
-            )
+                inputs = tokenizer(
+                    passage,
+                    question_option,
+                    add_special_tokens=True,
+                    max_length=max_seq_length,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
 
-            choices_features.append(inputs)
-            
+                choices_features.append(inputs)
+                
             if self.mode == "test":
                 label = None
             else:
