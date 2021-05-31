@@ -111,7 +111,7 @@ def train(args: argparse.Namespace) -> None:
                 optimizer.zero_grad()
             
             train_loss += loss.item()
-            train_corrects += loss_fn(logits, labels)  # 不是吧???
+            train_corrects += loss_fn(logits, labels)  # 看錯，但名字不應該取 loss_fn 吧⋯⋯
             
         train_log = {
                 "train_loss": train_loss / len(train_set),
@@ -147,7 +147,7 @@ def train(args: argparse.Namespace) -> None:
 
                 valid_loss += loss.item()
                 logits = outputs.logits
-                valid_corrects += loss_fn(logits, labels)  # ???
+                valid_corrects += loss_fn(logits, labels)  # 同上
 
             valid_log = {
                 "valid_loss": valid_loss / len(valid_set),
