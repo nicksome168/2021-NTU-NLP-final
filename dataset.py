@@ -54,7 +54,8 @@ class QADataset(Dataset):
             # max len of pg = 7654
             option: str
             for option in x["question"]["choices"]:
-                splits_choices_features = []    
+                # 這邊會保證一定 ABC 的順序嗎？如果不是的話，label_map 的對應會錯
+                splits_choices_features = []
                 question_option = question + " " + option['text'] 
                 # max_len = 3060
                 # len of pg per split = 450
