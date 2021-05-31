@@ -138,7 +138,7 @@ class XLNetMultipleChoiceModel(torch.nn.Module):
             target_mapping=target_mapping,
             head_mask=head_mask,
             inputs_embeds=flat_inputs_embeds,
-            use_mems=use_mems,
+            use_mems=use_mems,  # 這邊如果有 mems 的話是不是要開？
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
