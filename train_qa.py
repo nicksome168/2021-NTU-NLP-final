@@ -21,6 +21,7 @@ def train(args: argparse.Namespace) -> None:
     all_data = clean_data(all_data)
     
     # Split Data
+    # 這邊是不是要 random sample 比較好
     valid_data = all_data[:round(len(all_data) * args.train_val_split)]
     train_data = all_data[round(len(all_data) * args.train_val_split):]
     print(f"train data: {len(train_data)} valid data: {len(valid_data)}")
@@ -43,7 +44,7 @@ def train(args: argparse.Namespace) -> None:
     valid_loader = DataLoader(
         valid_set,
         batch_size=1,
-        shuffle=True,
+        shuffle=True,  # 不需要 shuffle 吧，不過沒什麼差
         num_workers=4,
         collate_fn=valid_set.collate_fn,
         pin_memory=True,
@@ -110,7 +111,7 @@ def train(args: argparse.Namespace) -> None:
                 optimizer.zero_grad()
             
             train_loss += loss.item()
-            train_corrects += loss_fn(logits, labels)
+            train_corrects += loss_fn(logits, labels)  # 看錯，但名字不應該取 loss_fn 吧⋯⋯
             
         train_log = {
                 "train_loss": train_loss / len(train_set),
@@ -146,7 +147,7 @@ def train(args: argparse.Namespace) -> None:
 
                 valid_loss += loss.item()
                 logits = outputs.logits
-                valid_corrects += loss_fn(logits, labels)
+                valid_corrects += loss_fn(logits, labels)  # 同上
 
             valid_log = {
                 "valid_loss": valid_loss / len(valid_set),

@@ -54,7 +54,8 @@ class QADataset(Dataset):
             # max len of pg = 7654
             option: str
             for option in x["question"]["choices"]:
-                splits_choices_features = []    
+                # 這邊會保證一定 ABC 的順序嗎？如果不是的話，label_map 的對應會錯
+                splits_choices_features = []
                 question_option = question + " " + option['text'] 
                 # max_len = 3060
                 # len of pg per split = 450
@@ -91,7 +92,7 @@ class QADataset(Dataset):
                 "label": label,
                 "input_ids": torch.stack([ids for ids in all_splits_choices_features["input_ids"]], dim=0),
                 "attention_mask": torch.stack([mask for mask in all_splits_choices_features["attention_mask"]], dim=0),
-    #             "token_type_ids": torch.cat([cf["token_type_ids"] for cf in choices_features]).reshape(-1),
+    #             "token_type_ids": torch.cat([cf["token_type_ids"] for cf in choices_features]).reshape(-1),  # BERT 的話還是需要這個吧（？
             }
                 
         else:
@@ -121,5 +122,5 @@ class QADataset(Dataset):
                 "label": label,
                 "input_ids": torch.stack([cf["input_ids"] for cf in choices_features]).reshape(-1, max_seq_length),
                 "attention_mask": torch.stack([cf["attention_mask"] for cf in choices_features]).reshape(-1, max_seq_length),
-    #             "token_type_ids": torch.cat([cf["token_type_ids"] for cf in choices_features]).reshape(-1),
+    #             "token_type_ids": torch.cat([cf["token_type_ids"] for cf in choices_features]).reshape(-1),  # 同上
             }
