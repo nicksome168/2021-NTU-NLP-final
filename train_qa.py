@@ -23,13 +23,23 @@ def train(args: argparse.Namespace) -> None:
     all_data = clean_data(all_data)
     
     # Split data
-    valid_data = all_data[:round(len(all_data) * args.train_val_split)]
-    train_data = all_data[round(len(all_data) * args.train_val_split):]
+    if args.valid_data:
+        with open(args.data_dir / args.valid_data) as file:
+            valid_data = json.load(file)
+        valid_data = clean_data(valid_data)
+        train_data = all_data
+    else:
+        valid_data = all_data[:round(len(all_data) * args.train_val_split)]
+        train_data = all_data[round(len(all_data) * args.train_val_split):]
     print(f"train data: {len(train_data)} valid data: {len(valid_data)}")
 
+    if args.need_summarize:
+        summarizer_ = Summarizer()
+        summarizer_.load_model(args.data_dir / args.train_data)
+    else:
+        summarizer_ = None
+
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-    summarizer_ = Summarizer()
-    summarizer_.load_model(args.data_dir / args.train_data)
     train_set = QADataset(train_data, tokenizer, summarizer_, args.max_seq_length, mode="train")
     valid_set = QADataset(valid_data, tokenizer, summarizer_, args.max_seq_length, mode="valid")
 
@@ -154,6 +164,7 @@ def parse_args() -> argparse.Namespace:
     
     #data
     parser.add_argument("--train_data", type=str, default="train.json")
+    parser.add_argument("--valid_data", type=str, default=None)
     parser.add_argument(
         "--data_dir",
         type=Path,
@@ -169,6 +180,7 @@ def parse_args() -> argparse.Namespace:
         help="Directory to save model files.",
         default="model/",
     )
+    parser.add_argument("--need_summarize", action="store_true")
     
     # optimizer
     parser.add_argument("--lr", type=float, default=1e-5)
