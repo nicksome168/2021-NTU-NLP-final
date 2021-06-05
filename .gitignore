@@ -87,6 +87,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # IPython
 profile_default/
@@ -133,3 +134,7 @@ Pipfile.lock
 
 # data
 prediction/
+/*.txt
+
+# log
+/wandb
