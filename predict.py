@@ -4,45 +4,48 @@ from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, XLNetForMultipleChoice
 from tqdm import tqdm
 
 from utils import handle_reproducibility, clean_data
 from dataset import QADataset
-from model import MultipleChoiceModel
 
+from summarizer import Summarizer
 
 @torch.no_grad()
 def test(args):
     with open(args.data_path) as file:
         all_data = json.load(file)
-
+    
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-    test_set = QADataset(all_data, tokenizer, args.max_seq_length, mode="test")
+    summarizer_ = Summarizer()
+    test_set = QADataset(all_data, tokenizer, summarizer_, args.max_seq_length, mode="test")
 
     test_loader = DataLoader(
         test_set,
-        batch_size=args.batch_size,
+        batch_size=1,
         shuffle=False,
         num_workers=4,
         collate_fn=test_set.collate_fn,
         pin_memory=True,
     )
 
-    model = MultipleChoiceModel(args.base_model)
+    model = XLNetForMultipleChoice.from_pretrained(args.base_model, mem_len=args.max_seq_length)
     model.load_state_dict(torch.load(args.checkpoint))
     model.to(args.device)
     model.eval()
 
     pred_dict = {"id":[],"answer":[]}
     label_map = {0: "A", 1: "B", 2: "C"}
-    for batch_idx, (input_ids_batch, attention_mask_batch, _) in enumerate(tqdm(test_loader)):
+    for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, _) in enumerate(tqdm(test_loader)):
         input_ids = input_ids_batch.to(args.device)
+        token_type_ids = token_type_ids_batch.to(args.device)
         attention_mask = attention_mask_batch.to(args.device)
 
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        loss = outputs.loss
-        logits = outputs.logits
+        outputs = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+
+        logits = outputs[0]
+
         pred = torch.argmax(logits, dim=1)
         
         # add to prediction dict
@@ -65,11 +68,11 @@ def parse_args() -> argparse.Namespace:
     )
     
     # prediction
-    parser.add_argument("--pred_file", type=Path, default="public.csv")
     parser.add_argument("--pred_path", type=Path, default="prediction")
+    parser.add_argument("--pred_file", type=Path, default="public.csv")
     
     # model
-    parser.add_argument("--base_model", type=Path, required=True)
+    parser.add_argument("--base_model", type=str, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     
     # testing

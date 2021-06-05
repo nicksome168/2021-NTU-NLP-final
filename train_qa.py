@@ -6,13 +6,16 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, XLNetForMultipleChoice
 from tqdm import tqdm
 
 from utils import handle_reproducibility, loss_fn, clean_data
 from dataset import QADataset
-from model import MultipleChoiceModel
 
+# from dotenv import load_dotenv
+# load_dotenv()
+
+from summarizer import Summarizer
 
 def train(args: argparse.Namespace) -> None:
     with open(args.data_dir / args.train_data) as file:
@@ -25,14 +28,16 @@ def train(args: argparse.Namespace) -> None:
     print(f"train data: {len(train_data)} valid data: {len(valid_data)}")
 
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
-    train_set = QADataset(train_data, tokenizer, args.max_seq_length, mode="train")
-    valid_set = QADataset(valid_data, tokenizer, args.max_seq_length, mode="valid")
+    summarizer_ = Summarizer()
+    summarizer_.load_model(args.data_dir / args.train_data)
+    train_set = QADataset(train_data, tokenizer, summarizer_, args.max_seq_length, mode="train")
+    valid_set = QADataset(valid_data, tokenizer, summarizer_, args.max_seq_length, mode="valid")
 
     train_loader = DataLoader(
         train_set,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=16,
         collate_fn=train_set.collate_fn,
         pin_memory=True,
         drop_last=True,
@@ -42,12 +47,12 @@ def train(args: argparse.Namespace) -> None:
         valid_set,
         batch_size=1,
         shuffle=True,
-        num_workers=4,
+        num_workers=16,
         collate_fn=valid_set.collate_fn,
         pin_memory=True,
     )
 
-    model = MultipleChoiceModel(args.base_model)
+    model = XLNetForMultipleChoice.from_pretrained(args.base_model, mem_len=args.max_seq_length)
     model.to(args.device)
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -66,24 +71,32 @@ def train(args: argparse.Namespace) -> None:
         optimizer.zero_grad()
         train_loss = 0
         train_corrects = 0
-        for batch_idx, (input_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(train_loader)):
-            # input shape = (batch_size, num_options, seq_len)
-            # label shape = (batch_size,)
-            
+        for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(train_loader)):
             input_ids = input_ids_batch.to(args.device)
+            token_type_ids = token_type_ids_batch.to(args.device)
             attention_mask = attention_mask_batch.to(args.device)
             labels = label_batch.to(args.device)
 
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            # if batch_idx % 10 == 0:
+            #     for i in range(input_ids.shape[1]):
+            #         print(tokenizer.decode(input_ids[0,i,:]))
+
+            outputs = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, labels=labels)
             
-            loss = outputs.loss
-            logits = outputs.logits
+            loss = outputs[0]
+            logits = outputs[1]
+
+            loss_value = loss.item()
+            if args.n_batch_per_step > 1:
+                loss = loss / args.n_batch_per_step
+
             loss.backward()
+
             if (batch_idx + 1) % args.n_batch_per_step == 0:
                 optimizer.step()
                 optimizer.zero_grad()
             
-            train_loss += loss.item()
+            train_loss += loss_value
             train_corrects += loss_fn(logits, labels)
             
         train_log = {
@@ -98,15 +111,18 @@ def train(args: argparse.Namespace) -> None:
             model.eval()
             valid_loss = 0
             valid_corrects = 0
-            for batch_idx, (input_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(valid_loader)):
+            for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(valid_loader)):
                 input_ids = input_ids_batch.to(args.device)
+                token_type_ids = token_type_ids_batch.to(args.device)
                 attention_mask = attention_mask_batch.to(args.device)
                 labels = label_batch.to(args.device)
-                
-                outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                        
+                outputs = model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask, labels=labels)
 
+                loss = outputs[0]
+                logits = outputs[1]
+                
                 valid_loss += loss.item()
-                logits = outputs.logits
                 valid_corrects += loss_fn(logits, labels)
 
             valid_log = {
@@ -146,7 +162,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     # model
-    parser.add_argument("--base-model", type=str, default="bert-base-chinese") #allenai/longformer-base-4096
+    parser.add_argument("--base_model", type=str, default="bert-base-chinese") #allenai/longformer-base-4096
     parser.add_argument(
         "--model_dir",
         type=Path,
@@ -167,10 +183,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=torch.device, default="cuda:0")
     parser.add_argument("--num_epoch", type=int, default=10)
     parser.add_argument("--n_batch_per_step", type=int, default=2)
-    parser.add_argument("--metric_for_best", type=str, default="valid_loss")
+    parser.add_argument("--metric_for_best", type=str, default="valid_acc")
 
     # logging
-    parser.add_argument("--wandb_logging", type=bool, default=False)
+    parser.add_argument("--wandb_logging", action="store_true")
     parser.add_argument("--exp_name", type=str, default="bert-base-chinese-512")
 
     args = parser.parse_args()
