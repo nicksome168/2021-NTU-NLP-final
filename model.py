@@ -68,9 +68,6 @@ class MultipleChoiceModel(torch.nn.Module):
             output = self.sequence_summary(output)
             logits = self.classifier(output)
 
-            print(len(output))  
-            print(output.shape)  # torch.Size([3, 768])
-
             reshaped_logits = logits.view(-1, num_choices)
 
             loss = None
