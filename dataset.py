@@ -89,9 +89,9 @@ class QADataset(Dataset):
                 assert len(segment_ids) == max_seq_length
 
             choices_features.append({
-                "input_ids": torch.tensor(inputs.input_ids]),
-                "attention_mask": torch.tensor(inputs.attention_mask]),
-                "token_type_ids": torch.tensor(inputs.token_type_ids])
+                "input_ids": torch.tensor(inputs.input_ids),
+                "attention_mask": torch.tensor(inputs.attention_mask),
+                "token_type_ids": torch.tensor(inputs.token_type_ids)
             })
 
         else:        
