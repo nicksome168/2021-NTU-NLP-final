@@ -117,10 +117,13 @@ def train(args: argparse.Namespace) -> None:
             print(f"{key:30s}: {value:.4}")
 
         # Validation
+        
+        softmax = torch.nn.Softmax(dim=1)
         with torch.no_grad():
             model.eval()
             valid_loss = 0
             valid_corrects = 0
+            data = []
             for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(valid_loader)):
                 input_ids = input_ids_batch.to(args.device)
                 token_type_ids = token_type_ids_batch.to(args.device)
@@ -132,9 +135,22 @@ def train(args: argparse.Namespace) -> None:
                 loss = outputs[0]
                 logits = outputs[1]
                 
+                logits = softmax(logits)
                 valid_loss += loss.item()
                 valid_corrects += loss_fn(logits, labels)
 
+                if args.wandb_logging:
+                    wandb.log({f"valid/{batch_idx+1}-logits": wandb.Histogram(torch.flatten(logits).to("cpu"))})
+                    wandb.log({f"valid/{batch_idx+1}-correct": wandb.Histogram(loss_fn(logits, labels).to("cpu").item())})
+                    pred_opt = torch.argmax(logits, dim=1)
+
+                    pg = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('<sep>')[0].replace('<pad>', '')
+                    question_ans = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('<sep>')[1]
+                    question = question_ans.split(" ")[1]
+                    ans = question_ans.split(" ")[2]
+                    pred = tokenizer.decode(input_ids[0, pred_opt.to("cpu").item(),:]).split('<sep>')[1].split(" ")[2]
+                    data.append([f"{batch_idx+1}", pg, question, ans, pred])
+                    
             valid_log = {
                 "valid_loss": valid_loss / len(valid_set),
                 "valid_acc": valid_corrects / len(valid_set),
@@ -143,6 +159,7 @@ def train(args: argparse.Namespace) -> None:
                 print(f"{key:30s}: {value:.4}")
             if args.wandb_logging:
                 wandb.log({**train_log, **valid_log})
+                wandb.log({f"Pred": wandb.Table(data=data, columns=["idx", "passage", "question", "ans", "pred"])})
 
         if valid_log[args.metric_for_best] > best_metric:
             best_metric = valid_log[args.metric_for_best]
