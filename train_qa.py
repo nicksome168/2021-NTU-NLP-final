@@ -2,14 +2,15 @@ import os
 import argparse
 import json
 from pathlib import Path
+import numpy as np
 
 import torch
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-from transformers import AutoTokenizer, XLNetForMultipleChoice
+from transformers import BertTokenizer, AlbertForMultipleChoice
 from tqdm import tqdm
 
-from utils import handle_reproducibility, loss_fn, clean_data
+from utils import handle_reproducibility, loss_fn, clean_data, normalize_logits
 from dataset import QADataset
 
 # from dotenv import load_dotenv
@@ -39,7 +40,7 @@ def train(args: argparse.Namespace) -> None:
     else:
         summarizer_ = None
 
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
+    tokenizer = BertTokenizer.from_pretrained(args.base_model, strip_accents=None)
     train_set = QADataset(train_data, tokenizer, summarizer_, args.max_seq_length, mode="train")
     valid_set = QADataset(valid_data, tokenizer, summarizer_, args.max_seq_length, mode="valid")
 
@@ -62,7 +63,7 @@ def train(args: argparse.Namespace) -> None:
         pin_memory=True,
     )
 
-    model = XLNetForMultipleChoice.from_pretrained(args.base_model, mem_len=args.max_seq_length)
+    model = AlbertForMultipleChoice.from_pretrained(args.base_model)
     model.to(args.device)
 
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -81,7 +82,10 @@ def train(args: argparse.Namespace) -> None:
         optimizer.zero_grad()
         train_loss = 0
         train_corrects = 0
+        raw_output_train = {}
         for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(train_loader)):
+            raw_output_train[batch_idx] = {}
+
             input_ids = input_ids_batch.to(args.device)
             token_type_ids = token_type_ids_batch.to(args.device)
             attention_mask = attention_mask_batch.to(args.device)
@@ -95,6 +99,7 @@ def train(args: argparse.Namespace) -> None:
             
             loss = outputs[0]
             logits = outputs[1]
+            raw_logits = logits.to('cpu').clone().detach()
 
             loss_value = loss.item()
             if args.n_batch_per_step > 1:
@@ -108,6 +113,10 @@ def train(args: argparse.Namespace) -> None:
             
             train_loss += loss_value
             train_corrects += loss_fn(logits, labels)
+
+            if args.wandb_logging:
+                raw_output_train[batch_idx]["corrects"] = loss_fn(logits, labels).to("cpu").item()
+                raw_output_train[batch_idx]["raw_logits"] = torch.flatten(raw_logits).to("cpu")
             
         train_log = {
                 "train_loss": train_loss / len(train_set),
@@ -124,7 +133,9 @@ def train(args: argparse.Namespace) -> None:
             valid_loss = 0
             valid_corrects = 0
             data = []
+            raw_output_valid = {}
             for batch_idx, (input_ids_batch, token_type_ids_batch, attention_mask_batch, label_batch) in enumerate(tqdm(valid_loader)):
+                raw_output_valid[batch_idx] = {}
                 input_ids = input_ids_batch.to(args.device)
                 token_type_ids = token_type_ids_batch.to(args.device)
                 attention_mask = attention_mask_batch.to(args.device)
@@ -135,20 +146,22 @@ def train(args: argparse.Namespace) -> None:
                 loss = outputs[0]
                 logits = outputs[1]
                 
+                raw_logits = logits.to('cpu').clone().detach()
                 logits = softmax(logits)
                 valid_loss += loss.item()
                 valid_corrects += loss_fn(logits, labels)
 
                 if args.wandb_logging:
-                    wandb.log({f"valid/{batch_idx+1}-logits": wandb.Histogram(torch.flatten(logits).to("cpu"))})
-                    wandb.log({f"valid/{batch_idx+1}-correct": wandb.Histogram(loss_fn(logits, labels).to("cpu").item())})
-                    pred_opt = torch.argmax(logits, dim=1)
+                    raw_output_valid[batch_idx]["corrects"] = loss_fn(logits, labels).to("cpu").item()
+                    raw_output_valid[batch_idx]["raw_logits"] = torch.flatten(raw_logits).to("cpu")
 
-                    pg = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('<sep>')[0].replace('<pad>', '')
-                    question_ans = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('<sep>')[1]
-                    question = question_ans.split(" ")[1]
-                    ans = question_ans.split(" ")[2]
-                    pred = tokenizer.decode(input_ids[0, pred_opt.to("cpu").item(),:]).split('<sep>')[1].split(" ")[2]
+                    pred_opt = torch.argmax(logits, dim=1)
+                    pg = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('[SEP]')[0].replace('[PAD]', '')
+                    question_ans = tokenizer.decode(input_ids[0, labels.to("cpu").item(),:]).split('[SEP]')[1].replace('[PAD]', '')
+  
+                    question = question_ans.split("?")[0]
+                    ans = question_ans.split("?")[1]
+                    pred = tokenizer.decode(input_ids[0, pred_opt.to("cpu").item(),:]).split('[SEP]')[1].split("?")[1].replace('[PAD]', '')
                     data.append([f"{batch_idx+1}", pg, question, ans, pred])
                     
             valid_log = {
@@ -157,9 +170,29 @@ def train(args: argparse.Namespace) -> None:
             }
             for key, value in valid_log.items():
                 print(f"{key:30s}: {value:.4}")
+
             if args.wandb_logging:
-                wandb.log({**train_log, **valid_log})
-                wandb.log({f"Pred": wandb.Table(data=data, columns=["idx", "passage", "question", "ans", "pred"])})
+                wandb.log({**train_log, **valid_log}, step=epoch)
+                wandb.log({f"Pred": wandb.Table(data=data, columns=["idx", "passage", "question", "ans", "pred"])}, step=epoch)
+                all_logits_train = torch.tensor([])
+                for idx in sorted(raw_output_train.keys()):
+                    logit = torch.flatten(raw_output_train[idx]['raw_logits'])
+                    logit = normalize_logits(logit)
+                    if raw_output_train[idx]['corrects'] == 0:
+                        logit = -logit
+                    all_logits_train = np.hstack((all_logits_train, logit))
+                
+                all_logits_valid = torch.tensor([])
+                for idx in sorted(raw_output_valid.keys()):
+                    logit = torch.flatten(raw_output_valid[idx]['raw_logits'])
+                    logit = normalize_logits(logit)
+                    if raw_output_valid[idx]['corrects'] == 0:
+                        logit = -logit
+                    all_logits_valid = np.hstack((all_logits_valid, logit))
+
+                # wandb.log({f"valid/logits": wandb.Histogram(all_logits_valid)}, step=epoch)
+                wandb.log({f"raw_logits/train": wandb.Histogram(all_logits_train)}, step=epoch)
+                wandb.log({f"raw_logits/valid": wandb.Histogram(all_logits_valid)}, step=epoch)                
 
         if valid_log[args.metric_for_best] > best_metric:
             best_metric = valid_log[args.metric_for_best]

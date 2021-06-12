@@ -69,7 +69,7 @@ class QADataset(Dataset):
                 question_option = question + " " + option
                 question_option = self.trim_to_max_length(51, question_option)
                 pg_tokens = tokenizer.tokenize(passage)
-                q_opt_tokens = tokenizer.tokenize(option)
+                q_opt_tokens = tokenizer.tokenize(question_option)
                 tokens = [special_tokens['cls']] + pg_tokens + [special_tokens['sep']] + q_opt_tokens + [special_tokens['sep']]
                 segment_ids = [0] * (len(pg_tokens) + 2) + [1] * (len(q_opt_tokens) + 1)
                 input_ids = tokenizer.convert_tokens_to_ids(tokens)
@@ -88,19 +88,11 @@ class QADataset(Dataset):
                 assert len(input_mask) == max_seq_length
                 assert len(segment_ids) == max_seq_length
 
-<<<<<<< HEAD
-            choices_features.append({
-                "input_ids": torch.tensor(inputs.input_ids),
-                "attention_mask": torch.tensor(inputs.attention_mask),
-                "token_type_ids": torch.tensor(inputs.token_type_ids)
-            })
-=======
                 choices_features.append({
                     "input_ids": torch.tensor(input_ids),
                     "attention_mask": torch.tensor(input_mask),
                     "token_type_ids": torch.tensor(segment_ids)
                 })
->>>>>>> cbefb73b566b00fdd9ee933a176d18eb35f538e6
 
         else:        
             for option in options:
@@ -117,9 +109,9 @@ class QADataset(Dataset):
                 )
                 
                 choices_features.append({
-                    "input_ids": torch.tensor(inputs.input_ids[0]),
-                    "attention_mask": torch.tensor(inputs.attention_mask[0]),
-                    "token_type_ids": torch.tensor(inputs.token_type_ids[0])
+                    "input_ids": torch.as_tensor(inputs.input_ids[0]),
+                    "attention_mask": torch.as_tensor(inputs.attention_mask[0]),
+                    "token_type_ids": torch.as_tensor(inputs.token_type_ids[0])
                 })
         
         if self.mode == "test":
