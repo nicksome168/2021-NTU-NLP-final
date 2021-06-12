@@ -14,7 +14,7 @@ from summarizer import Summarizer
 
 @torch.no_grad()
 def test(args):
-    with open(args.data_path) as file:
+    with open(args.data_path, encoding='utf-8') as file:
         all_data = json.load(file)
     
     tokenizer = AutoTokenizer.from_pretrained(args.base_model)
